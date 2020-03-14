@@ -42,71 +42,49 @@ except ImportError:
 ###############################################################################
 
 
-# Prompts the user to enter the IP/FQDN of a firewall to retrieve the api key
+# Prompts the user to enter an address, then checks it's validity
 def getfwipfqdn():
     while True:
-        try:
-            fwipraw = input("Please enter Panorama/firewall IP or FQDN: ")
-            ipr = re.match(r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$", fwipraw)
-            fqdnr = re.match(r"(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}$)", fwipraw)
-            if ipr:
-                break
-            elif fqdnr:
-                break
-            else:
-                print("\nThere was something wrong with your entry. Please try again...\n")
-        except:
-            print("\nThere was some kind of problem entering your IP or FQDN. Please try again...\n")
+        fwipraw = input('\nPlease enter Panorama/firewall IP or FQDN: ')
+        ipr = re.match(r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$', fwipraw)
+        fqdnr = re.match(r'(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}$)', fwipraw)
+        if ipr:
+            break
+        elif fqdnr:
+            break
+        else:
+            print('\nThere was something wrong with your entry. Please try again...\n')
     return fwipraw
 
 
-# Prompts the user to enter their username to retrieve the api key
-def getuname():
+# Prompts the user to enter a username and password
+def getCreds():
     while True:
-        try:
-            username = input("Please enter your user name: ")
-            usernamer = re.match(r"^[a-zA-Z0-9_-]{3,24}$", username)  # 3 - 24 characters {3,24}
-            if usernamer:
-                break
-            else:
-                print("\nThere was something wrong with your entry. Please try again...\n")
-        except:
-            print("\nThere was some kind of problem entering your user name. Please try again...\n")
-    return username
-
-
-# Prompts the user to enter their password to retrieve the api key
-def getpassword():
-    while True:
-        try:
-            password = getpass.getpass("Please enter your password: ")
-            passwordr = re.match(r"^.{5,50}$", password)  # simple validate PANOS has no password characterset restrictions
-            if passwordr:
-                break
-            else:
-                print("\nThere was something wrong with your entry. Please try again...\n")
-        except:
-            print("\nThere was some kind of problem entering your password. Please try again...\n")
-    return password
+        username = input('Please enter your user name: ')
+        usernamer = re.match(r'^[\w-]{3,24}$', username)
+        if usernamer:
+            password = getpass.getpass('Please enter your password: ')
+            break
+        else:
+            print('\nThere was something wrong with your entry. Please try again...\n')
+    return username, password
 
 
 # Retrieves the user's api key
 def getkey(fwip):
     while True:
         try:
-            fwipgetkey = fwip
-            username = getuname()
-            password = getpassword()
-            keycall = "https://%s/api/?type=keygen&user=%s&password=%s" % (fwipgetkey, username, password)
+            username, password = getCreds()
+            keycall = f'https://{fwip}/api/?type=keygen&user={username}&password={password}'
             r = requests.get(keycall, verify=False)
             tree = ET.fromstring(r.text)
-            if tree.get('status') == "success":
-                apikey = tree[0][0].text
+            if tree.get('status') == 'success':
+                apikey = tree.find('./result/key').text
                 break
             else:
-                print("\nYou have entered an incorrect username or password. Please try again...\n")
+                print('\nYou have entered an incorrect username or password. Please try again...\n')
         except requests.exceptions.ConnectionError:
-            print("\nThere was a problem connecting to the firewall.  Please check the IP or FQDN and try again...\n")
+            print('\nThere was a problem connecting to the firewall. Please check the address and try again...\n')
             exit()
     return apikey
 
@@ -120,7 +98,7 @@ def tagSearch(tree, keyword):
         parents_tag = []
         for parent in tag.find_parents():
             if parent.name == 'entry' and parent.name is not None and parent.get('name') != 'localhost.localdomain' and parent.get('name') != 'vsys1':
-                parent.name = "entry[@name='" + parent.get('name') + "']"  # MATCH ON entry TAGS THAT HAVE AN ATTRIBUTE, AND PUT IT IN A STRING WITH PROPER FORMAT ##
+                parent.name = "entry[@name='" + parent.get('name') + "']"  # MATCH ON entry TAGS THAT HAVE AN ATTRIBUTE, AND PUT IT IN A STRING WITH PROPER FORMAT
             if parent.name != u'result' and parent.name != u'response' and parent.name != u'[document]':  # DON'T NEED THE TOP 3 PARENTS IN THE XML
                 parents_tag.append(parent.name)
             children = tag.find_all()
@@ -128,11 +106,11 @@ def tagSearch(tree, keyword):
                 tagsDict.update({parents_tag[0] + '/' + str(tag.name) + "[text()='" + str(tag.text) + "']": parents_tag[1:][::-1]})
             else:
                 tagsDict.update({parents_tag[0] + '/' + str(tag.name): parents_tag[1:][::-1]})
-        for key, value in tagsDict.items():  # LOOP THROUGH THE DICTIONARY AND CREATE THE XPATH STRING FOR EACH KEY ##
+        for key, value in tagsDict.items():  # LOOP THROUGH THE DICTIONARY AND CREATE THE XPATH STRING FOR EACH KEY
             xPath_tag = ''
-            for item in value:  # LOOP THROUGH THE VALUES AND CREATE THE XPATH FROM THE PARENTS ##
+            for item in value:  # LOOP THROUGH THE VALUES AND CREATE THE XPATH FROM THE PARENTS
                 xPath_tag = xPath_tag + '/' + str(item)
-            xPath_tag = xPath_tag + '/' + str(key)  # ADD THE KEY AT THE END OF THE XPATH, AFTER ALL THE PARENTS ARE ADDED ##
+            xPath_tag = xPath_tag + '/' + str(key)  # ADD THE KEY AT THE END OF THE XPATH, AFTER ALL THE PARENTS ARE ADDED
             tagsList.append(xPath_tag)
     tagsList = list(set(tagsList))
     tagsList.sort()
@@ -148,18 +126,18 @@ def attrSearch(tree, keyword):
         parents_attr = []
         for parent in attr.find_parents():
             if parent.name == 'entry' and parent.name is not None and parent.get('name') != 'localhost.localdomain' and parent.get('name') != 'vsys1':
-                parent.name = "entry[@name='" + parent.get('name') + "']"  # MATCH ON entry TAGS THAT HAVE AN ATTRIBUTE, AND PUT IT IN A STRING WITH PROPER FORMAT ##
+                parent.name = "entry[@name='" + parent.get('name') + "']"  # MATCH ON entry TAGS THAT HAVE AN ATTRIBUTE, AND PUT IT IN A STRING WITH PROPER FORMAT
             if parent.name != u'result' and parent.name != u'response' and parent.name != u'[document]':  # DON'T NEED THE TOP 3 PARENTS IN THE XML
                 parents_attr.append(parent.name)
-        if attr.name == u'entry':  # SOME TAG NAMES SHOW THE @name TAG AUTOMATICALLY, SO IT DUPLICATES BELOW. THIS FIXES THE DUPLICATE ISSUE ON THE ELSE STATEMENT ##
+        if attr.name == u'entry':  # SOME TAG NAMES SHOW THE @name TAG AUTOMATICALLY, SO IT DUPLICATES BELOW. THIS FIXES THE DUPLICATE ISSUE ON THE ELSE STATEMENT
             attrDict.update({attr.name + "[@name='" + str(attr.get('name')) + "']": parents_attr[::-1]})
         else:
             attrDict.update({attr.name: parents_attr[::-1]})
-        for key, value in attrDict.items():  # LOOP THROUGH THE DICTIONARY AND CREATE THE XPATH STRING FOR EACH KEY ##
+        for key, value in attrDict.items():  # LOOP THROUGH THE DICTIONARY AND CREATE THE XPATH STRING FOR EACH KEY
             xPath_attr = ''
-            for item in value:  # LOOP THROUGH THE VALUES AND CREATE THE XPATH FROM THE PARENTS ##
+            for item in value:  # LOOP THROUGH THE VALUES AND CREATE THE XPATH FROM THE PARENTS
                 xPath_attr = xPath_attr + '/' + str(item)
-            xPath_attr = xPath_attr + '/' + str(key)  # ADD THE KEY AT THE END OF THE XPATH, AFTER ALL THE PARENTS ARE ADDED ##
+            xPath_attr = xPath_attr + '/' + str(key)  # ADD THE KEY AT THE END OF THE XPATH, AFTER ALL THE PARENTS ARE ADDED
             attrList.append(xPath_attr)
     attrList = list(set(attrList))
     attrList.sort()
@@ -194,20 +172,20 @@ def main():
     print('\n')
     keyCheck = True
     while True:
-        if keyCheck:  # Only prompt for address and credentials if first time ##
+        if keyCheck:  # Only prompt for address and credentials if first time
             fwip = getfwipfqdn()
             mainkey = getkey(fwip)
             keyCheck = False
 
-        ## Get the config from the Panorama/Firewall, and save it as a Beautiful Soup tree object ##
+        # Get the config from the Panorama/Firewall, and save it as a Beautiful Soup tree object
         fullurl = 'https://' + fwip + '/api/?type=op&cmd=<show><config><running></running></config></show>&key=' + mainkey
         r = requests.get(fullurl, verify=False)
         tree = BeautifulSoup(r.text, 'html.parser')
 
-        ## Prompt user to enter the keyword, for which to search the xml config ##
+        # Prompt user to enter the keyword, for which to search the xml config
         while True:
             keyword = input('\n\nWhat keyword would you like to search for?  ')
-            keyword_r = re.match(r"^(\s*\S+(.|\n)*)$", keyword)  # Check the entry for the proper format (must contain something other than just whitespace) ##
+            keyword_r = re.match(r"^(\s*\S+(.|\n)*)$", keyword)  # Check the entry for the proper format (must contain something other than just whitespace)
             if keyword_r:
                 break
             else:
@@ -216,13 +194,13 @@ def main():
 
         print('\n\n')
 
-        ## Lists that will contain the finished xpaths with keyword matches on the tags, attributes, and strings respectively ##
+        # Lists that will contain the finished xpaths with keyword matches on the tags, attributes, and strings respectively
         xPathDict_tag, xPathList_tags = tagSearch(tree, keyword)
         xPathDict_attr, xPathList_attrs = attrSearch(tree, keyword)
         xPathDict_string, xPathList_strings = stringSearch(tree, keyword)
 
         count = 1
-        ## Prints the xpaths where the keyword string matches on the attributes ##
+        # Prints the xpaths where the keyword string matches on the attributes
         time.sleep(1)
         print('\nXpaths with keyword in tags:')
         if xPathList_tags == []:
@@ -232,7 +210,7 @@ def main():
                 print(str(count) + ') ' + xpath)
                 count += 1
 
-        ## Prints the xpaths where the keyword string matches on the attributes ##
+        # Prints the xpaths where the keyword string matches on the attributes
         time.sleep(1)
         print('\nXpaths with keyword in attributes:')
         if xPathList_attrs == []:
@@ -242,7 +220,7 @@ def main():
                 print(str(count) + ') ' + xpath)
                 count += 1
 
-        ## Prints the xpaths where the keyword string matches on the text ##
+        # Prints the xpaths where the keyword string matches on the text
         time.sleep(1)
         print('\nXpaths with keyword in text:')
         if xPathList_strings == []:
@@ -252,7 +230,7 @@ def main():
                 print(str(count) + ') ' + xpath)
                 count += 1
 
-        ## Prompts the user with the ability to list the children of a selected xpath ##
+        # Prompts the user with the ability to list the children of a selected xpath
         run = True
         another = True
         while run:
@@ -268,7 +246,7 @@ def main():
                             run = False
                             r = requests.get(fullurl, verify=False)
                             treeET = ET.fromstring(r.text)
-                            if xpathChoice <= len(xPathList_tags):  # If the user chooses a number in the tag list ##
+                            if xpathChoice <= len(xPathList_tags):  # If the user chooses a number in the tag list
                                 childXpath = './result' + str(xPathList_tags[xpathChoice - 1])
                                 childXpath = re.sub(r"\[text\(\)=(.|\n)*$", '', childXpath)
                                 children = list(treeET.find(childXpath))
@@ -288,7 +266,7 @@ def main():
                                                 print(str(xPathList_tags[xpathChoice - 1]) + '/' + element.tag + "[@name='" + element.get('name') + "'][text()='" + element.text + "']")
                                     else:
                                         print('THERE ARE NO CHILDREN FOR THE CHOSEN XPATH')
-                            elif xpathChoice <= len(xPathList_attrs) + len(xPathList_tags):  # If the user chooses a number in the attribute list ##
+                            elif xpathChoice <= len(xPathList_attrs) + len(xPathList_tags):  # If the user chooses a number in the attribute list
                                 children = list(treeET.find('./result' + str(xPathList_attrs[xpathChoice - len(xPathList_tags) - 1])))
                                 if children == []:
                                     print('THERE ARE NO CHILDREN FOR THE CHOSEN XPATH')
@@ -303,7 +281,7 @@ def main():
                                             print(str(xPathList_attrs[xpathChoice - len(xPathList_tags) - 1]) + '/' + element.tag + "[@name='" + element.get('name') + "']")
                                     else:
                                         print('THERE ARE NO CHILDREN FOR THE CHOSEN XPATH')
-                            else:  # If the user chooses a number in the strings list ##
+                            else:  # If the user chooses a number in the strings list
                                 childXpath = './result' + str(xPathList_strings[xpathChoice - (len(xPathList_tags) + len(xPathList_attrs)) - 1])
                                 childXpath = re.sub(r"\[text\(\)=(.|\n)*$", '', childXpath)
                                 children = list(treeET.find(childXpath))
